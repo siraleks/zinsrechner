@@ -39,4 +39,5 @@ MIT – frei verwendbar für private und gewerbliche Zwecke.
 
 ---
 
-**Entwickelt von Alexander**
+## Mit Unterstützung
+Dieses Projekt wurde von Alexander entwickelt und durch GPT-5 Thinking beim Entwurf, Debugging und bei der Dokumentation unterstützt.
