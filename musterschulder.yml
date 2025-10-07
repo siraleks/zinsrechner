@@ -1,0 +1,12 @@
+aktenzeichen: "AZ-123/2025"
+schuldner:
+  name: "Max Mustermann"
+  adresse: "Beispielweg 1, 12345 Musterstadt"
+glaeubiger:
+  name: "Kanzlei Beispiel"
+  referenz: "RG-2025-045"
+modus: "privat"         # 'privat' | 'unternehmen' | 'custom'
+zuschlag_pp: 5.00       # nur relevant bei modus 'custom'
+hinweise:
+  - "Stichtagsberechnung möglich via ZINSSTOP"
+  - "Zinsen nach 30/360 inkl. Start/Endtag"

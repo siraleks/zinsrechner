@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>Verzugszinsen‑Rechner – YAML & CSV (v3)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.35; padding: 16px; }
+    h1 { margin-top: 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 4px 6px; }
+    thead th { background: #f3f3f3; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+    .muted { color: #666; }
+    .warn { color: #b00; }
+    .card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; }
+    .small { font-size: 0.92rem; }
+  </style>
+</head>
+<body>
+<h1>Verzugszinsen‑Rechner – YAML & CSV</h1>
+<p class="muted">Reihenfolge: 1) Basiszins‑CSV laden → 2) Fall‑YAML/JSON laden (Stammdaten) → 3) Forderungs‑CSV laden → 4) Modus prüfen → 5) Berechnen. 30/360 inkl. Start/Endtag.</p>
+
+<div class="grid">
+  <section class="card">
+    <h2>1) Basiszinssätze (Pflicht)</h2>
+    <p class="small">CSV mit <code>basiszins_prozent;gueltig_ab</code> (TT.MM.JJJJ). Aktualisierung 01.01. &amp; 01.07.</p>
+    <div class="row">
+      <input type="file" id="basisFile" accept=".csv" />
+      <button id="loadBasis">Basis‑CSV laden</button>
+      <span id="basisInfo" class="muted"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2) Fall‑Stammdaten (empfohlen)</h2>
+    <p class="small">YAML <em>oder</em> JSON. YAML‑Beispiel siehe <code>musterschulder.yml</code>.</p>
+    <div class="row">
+      <input type="file" id="fallFile" accept=".yaml,.yml,.json" />
+      <button id="loadFall">Fall‑YAML/JSON laden</button>
+      <span id="fallInfo" class="muted"></span>
+    </div>
+    <div id="fallView" class="small"></div>
+  </section>
+
+  <section class="card">
+    <h2>3) Forderungs‑Ereignisse</h2>
+    <p class="small">CSV: <code>Typ;Datum;Betrag;Notiz</code> optional <code>zuschlag_pp;zinssatz_gesamt</code>. Typen: <code>START</code> (einmal), <code>ZAHLUNG</code> (negativ), <code>KOSTEN</code> (positiv), optional <code>ZINSSTOP</code>.</p>
+    <div class="row">
+      <input type="file" id="schuldnerFile" accept=".csv" />
+      <button id="loadForderung">Forderungs‑CSV laden</button>
+      <span id="forderungInfo" class="muted"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>4) Einstellungen & Stichtag</h2>
+    <p>
+      <label><input type="radio" name="mode" value="privat" checked> Privat (+5 %-Pkt.)</label>
+      <label><input type="radio" name="mode" value="unternehmen"> Unternehmen (+9 %-Pkt.)</label>
+      <label><input type="radio" name="mode" value="custom"> Individuell</label>
+      <label> Zuschlag (%-Pkt.): <input id="customPP" type="number" step="0.01" value="7.50" disabled></label>
+      &nbsp; | &nbsp;
+      Stichtag: <input type="date" id="stichtag">
+      <button id="setStichtag">ZINSSTOP setzen</button>
+      <label><input type="checkbox" id="csvOverride"> CSV‑Override zulassen</label>
+    </p>
+    <div id="settingsWarn" class="warn small"></div>
+    <button id="calc" type="button">Berechnen</button>
+	<button id="exportLatex" type="button">LaTeX (.tex) exportieren</button>
+
+
+  </section>
+
+  <section class="card">
+    <h2>5) Ergebnis</h2>
+    <h3>Ereignisse</h3>
+    <table id="tblEvents">
+      <thead><tr><th>Typ</th><th>Datum</th><th>Betrag</th><th>Notiz</th><th>zuschlag_pp</th><th>zinssatz_gesamt</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <h3>Zinsstaffel (30/360 inkl.)</h3>
+    <table id="tblZinsen">
+      <thead>
+        <tr>
+          <th>Von</th><th>Bis</th><th>Banktage</th><th>Basiszins</th><th>Zuschlag/Abs.</th><th>Zinssatz gesamt</th><th>Saldo (Beginn)</th><th>Teilzins</th><th>Quelle</th><th>Vorbehalt</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot><tr><td colspan="7">Summe Zinsen</td><td id="sumZins">0,00 €</td><td colspan="2"></td></tr></tfoot>
+    </table>
+
+    <h3>Summen</h3>
+    <div id="totals"></div>
+    <div id="notes"></div>
+  </section>
+</div>
+
+<script src="verzugszinsen_export_and_loaders.js"></script>
+<script src="verzugszinsen_preview_calc.js"></script>
+<script src="calc_reactivate_shim.js"></script>
+
+
+
+
+</body>
+</html>

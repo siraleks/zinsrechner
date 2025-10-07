@@ -1,0 +1,7 @@
+Typ;Datum;Betrag;Notiz
+START;01.01.2023;5000,00;Hauptforderung (brutto)
+KOSTEN;05.02.2023;25,00;Mahnung per Brief
+ZAHLUNG;15.03.2023;-1000,00;Teilzahlung Schuldner
+KOSTEN;20.03.2023;75,00;RA-Gebühr
+ZAHLUNG;10.06.2023;-500,00;Teilzahlung Schuldner
+ZINSSTOP;07.10.2025;0,00;berechnen bis zu diesem Datum
