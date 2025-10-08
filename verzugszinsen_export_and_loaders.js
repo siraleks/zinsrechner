@@ -19,16 +19,106 @@
   }
 
   // --- YAML/JSON (einfach) ---
-  function parseYAMLorJSON(text){
-    try { return JSON.parse(text); } catch(_){}
-    const out = {};
-    text.split(/\r?\n/).forEach(line => {
-      const m = line.match(/^\s*([^:#]+)\s*:\s*(.*?)\s*$/);
-      if (m) out[m[1].trim()] = m[2].trim().replace(/^"|"$/g,'');
-    });
-    return out;
+// --- YAML/JSON (robuster: 2 Ebenen) ---
+function parseYAMLorJSON(text){
+  // 1) JSON?
+  try { return JSON.parse(text); } catch(_){}
+
+  // 2) YAML (sehr einfach, aber mit 2 Ebenen und Einrückung)
+  const lines = text.split(/\r?\n/);
+
+  // Hilfsfunktionen
+  const stripComment = (s) => s.replace(/\s+#.*$/, '');
+  const unquote = (s) => s.replace(/^"(.*)"$/,'$1').replace(/^'(.*)'$/,'$1').trim();
+
+  const root = {};
+  // Stack von {indent, targetObj}
+  const stack = [{ indent: -1, obj: root }];
+
+  for (let raw of lines) {
+    let line = stripComment(raw);
+    if (!line.trim()) continue;
+
+    // Einrückung zählen (Spaces)
+    const indentMatch = line.match(/^(\s*)/);
+    const indent = indentMatch ? indentMatch[1].length : 0;
+    line = line.slice(indent);
+
+    // Nur key: value oder key:  (ohne Listen etc.)
+    const m = line.match(/^([^:#]+):\s*(.*)$/);
+    if (!m) continue;
+    const key = m[1].trim();
+    let val = m[2];
+
+    // Ebene anhand der Einrückung bestimmen
+    while (stack.length && indent <= stack[stack.length-1].indent) {
+      stack.pop();
+    }
+    const ctx = stack[stack.length-1].obj;
+
+    if (val === '' || val === undefined) {
+      // key:  -> Neuer Objektblock
+      const child = {};
+      ctx[key] = child;
+      stack.push({ indent, obj: child });
+    } else {
+      // key: value
+      ctx[key] = unquote(val);
+    }
   }
 
+  return root;
+}
+
+
+  // === Neu: Aktenzeichen + Schuldner robust aus YAML/JSON holen ===
+function getAktenzeichenFromFall(f){
+  if (!f || typeof f !== 'object') return '—';
+  return f.Aktenzeichen ?? f.aktenzeichen ?? f.az ?? f.AZ ?? '—';
+}
+
+function getSchuldnerFromFall(f){
+  if (!f || typeof f !== 'object') return { name: null, adresse: null };
+
+  // mögliche Schlüssel für die Person/Firma:
+  const s = f.schuldner ?? f.Schuldner ?? f.debitor ?? f.debtor ?? f.schuldnerin ?? null;
+  let name = null, adresse = null;
+
+  if (!s) {
+    // sehr einfache YAMLs: direkt auf Root-Ebene als String
+    if (typeof f.Schuldner === 'string') return { name: f.Schuldner.trim(), adresse: null };
+    if (typeof f.schuldner === 'string') return { name: f.schuldner.trim(), adresse: null };
+    return { name: null, adresse: null };
+  }
+
+  if (typeof s === 'string') {
+    name = s.trim();
+  } else if (typeof s === 'object') {
+    if (s.name) name = String(s.name).trim();
+    if (!name && (s.vorname || s.nachname)) name = [s.vorname, s.nachname].filter(Boolean).join(' ').trim();
+    if (!name && (s.firma || s.unternehmen)) name = String(s.firma || s.unternehmen).trim();
+
+    const adrObj = s.adresse ?? s.anschrift ?? s.address;
+    if (typeof adrObj === 'string') {
+      adresse = adrObj.trim();
+    } else if (Array.isArray(adrObj)) {
+      adresse = adrObj.filter(Boolean).join(', ');
+    } else if (adrObj && typeof adrObj === 'object') {
+      const parts = [
+        adrObj.strasse ?? adrObj.str ?? adrObj.street,
+        adrObj.plz ?? adrObj.postleitzahl ?? adrObj.zip,
+        adrObj.ort ?? adrObj.stadt ?? adrObj.city,
+        adrObj.land ?? adrObj.country
+      ].filter(Boolean);
+      adresse = parts.length ? parts.join(', ')
+                             : Object.values(adrObj).filter(v => v!=null).map(String).join(', ');
+    }
+  }
+
+  return { name: name || null, adresse: adresse || null };
+}
+
+	
   // --- DOM -> Tabellen-Daten ---
   function extractTableByHeaders(tableSelector, headerNames){
     const table = $(tableSelector);
@@ -57,20 +147,81 @@
       .replace(/~/g, '\\textasciitilde{}');
   }
 
+  // === Neu: Aktenzeichen + Schuldner robust aus YAML/JSON holen ===
+function getAktenzeichenFromFall(f){
+  if (!f || typeof f !== 'object') return '—';
+  return f.Aktenzeichen ?? f.aktenzeichen ?? f.az ?? f.AZ ?? '—';
+}
+
+function getSchuldnerFromFall(f){
+  if (!f || typeof f !== 'object') return { name: null, adresse: null };
+
+  // Kandidatenfelder für die Person/Firma
+  const s = f.schuldner ?? f.Schuldner ?? f.debitor ?? f.debtor ?? f.schuldnerin ?? null;
+  let name = null, adresse = null;
+
+  // Direkte Fallbacks (einfacher YAML-Loader schreibt ggf. flach)
+  if (!s) {
+    if (typeof f.Schuldner === 'string') return { name: f.Schuldner.trim(), adresse: null };
+    if (typeof f.schuldner === 'string') return { name: f.schuldner.trim(), adresse: null };
+  }
+
+  if (typeof s === 'string') {
+    name = s.trim();
+  } else if (s && typeof s === 'object') {
+    // Name/Firma zusammensetzen
+    if (s.name) name = String(s.name).trim();
+    if (!name && (s.vorname || s.nachname)) name = [s.vorname, s.nachname].filter(Boolean).join(' ').trim();
+    if (!name && (s.firma || s.unternehmen)) name = String(s.firma || s.unternehmen).trim();
+
+    // Adresse aus String/Array/Objekt akzeptieren
+    const adrObj = s.adresse ?? s.anschrift ?? s.address;
+    if (typeof adrObj === 'string') {
+      adresse = adrObj.trim();
+    } else if (Array.isArray(adrObj)) {
+      adresse = adrObj.filter(Boolean).join(', ');
+    } else if (adrObj && typeof adrObj === 'object') {
+      const parts = [
+        adrObj.strasse ?? adrObj.str ?? adrObj.street,
+        adrObj.plz ?? adrObj.postleitzahl ?? adrObj.zip,
+        adrObj.ort ?? adrObj.stadt ?? adrObj.city,
+        adrObj.land ?? adrObj.country
+      ].filter(Boolean);
+      adresse = parts.length ? parts.join(', ')
+                             : Object.values(adrObj).filter(v => v!=null).map(String).join(', ');
+    }
+  }
+
+  return { name: name || null, adresse: adresse || null };
+}
+
+
+
   // --- Falldaten aus #fallView ---
   function parseFall() {
-    const fv = $('#fallView');
-    let schuldner = 'Schuldner unbekannt';
-    let aktenzeichen = 'AZ-?';
-    if (fv) {
-      const html = fv.innerHTML;
-      const akzMatch = html.match(/Aktenzeichen:<\/b>\s*([^<]+)/i);
-      const schMatch = html.match(/Schuldner:<\/b>\s*([^<]+)/i);
-      if (akzMatch) aktenzeichen = akzMatch[1].trim();
-      if (schMatch) schuldner = schMatch[1].split('–')[0].trim();
-    }
+  // 1) bevorzugt echte Falldaten aus dem Loader
+  if (window._fall && typeof window._fall === 'object') {
+    const aktenzeichen = getAktenzeichenFromFall(window._fall) || 'AZ-?';
+    const s = getSchuldnerFromFall(window._fall);
+    const schuldner = s.name || 'Schuldner unbekannt';
     return { schuldner, aktenzeichen };
   }
+
+  // 2) Fallback: aus der HTML-Vorschau lesen (kompatibel zu bisher)
+  const fv = $('#fallView');
+  let schuldner = 'Schuldner unbekannt';
+  let aktenzeichen = 'AZ-?';
+  if (fv) {
+    const html = fv.innerHTML;
+    const akzMatch = html.match(/Aktenzeichen:<\/b>\s*([^<]+)/i);
+    const schMatch = html.match(/Schuldner:<\/b>\s*([^<]+)/i);
+    if (akzMatch) aktenzeichen = akzMatch[1].trim();
+    if (schMatch) schuldner = schMatch[1].split('–')[0].trim();
+  }
+  return { schuldner, aktenzeichen };
+}
+
+
 
   // ===== Loader initialisieren =====
   function initLoaders(){
@@ -89,19 +240,30 @@
     });
 
     $('#loadFall')?.addEventListener('click', ()=>{
-      const f = $('#fallFile')?.files?.[0];
-      if (!f) return alert('Bitte Fall-YAML/JSON auswählen.');
-      const fr = new FileReader();
-      fr.onload = () => {
-        const data = parseYAMLorJSON(fr.result);
-        $('#fallInfo') && ($('#fallInfo').textContent = 'Fall geladen.');
-        const az = data.Aktenzeichen || data.aktenzeichen || '—';
-        const name = data.Schuldner || data.schuldner || '—';
-        $('#fallView') && ($('#fallView').innerHTML = `<p><b>Aktenzeichen:</b> ${az}<br><b>Schuldner:</b> ${name}</p>`);
-        window._fall = data;
-      };
-      fr.readAsText(f, 'utf-8');
-    });
+  const f = $('#fallFile')?.files?.[0];
+  if (!f) return alert('Bitte Fall-YAML/JSON auswählen.');
+
+  const fr = new FileReader();
+  fr.onload = () => {
+	  const data = parseYAMLorJSON(fr.result);
+	  $('#fallInfo') && ($('#fallInfo').textContent = 'Fall geladen.');
+
+	  const az = getAktenzeichenFromFall(data);
+	  const s  = getSchuldnerFromFall(data);
+	  const name = s.name || '—';
+	  const adr  = s.adresse ? ' – ' + s.adresse : '';
+
+	  $('#fallView') && ($('#fallView').innerHTML =
+		`<p><b>Aktenzeichen:</b> ${az}<br><b>Schuldner:</b> ${name}${adr}</p>`);
+
+	  window._fall = data;
+	};
+
+  // <<< WICHTIG: Datei wirklich lesen >>>
+  fr.readAsText(f, 'utf-8');
+}); // <<< WICHTIG: Handler sauber schließen
+
+
 
     $('#loadForderung')?.addEventListener('click', ()=>{
       const f = $('#schuldnerFile')?.files?.[0];
